@@ -1,0 +1,10 @@
+.status-bar-item.plugin-sample-plugin {
+	padding: 0 var(--size-2-2);
+	gap: var(--size-2-2);
+}
+
+.in-snapshot {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-2);
+}
