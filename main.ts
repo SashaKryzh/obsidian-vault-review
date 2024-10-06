@@ -34,31 +34,54 @@ type File = Brand<
 	"File"
 >;
 
-interface VaultReviewSettings {
+interface Snapshot {
 	files: File[];
-	snapshotCreatedAt?: Date;
+	createdAt: Date;
+}
+
+interface Settings {
+	showRandomFileRibbon: boolean;
+	showStatusBar: boolean;
+}
+
+interface VaultReviewSettings {
+	snapshot?: Snapshot;
+	settings: Settings;
 }
 
 const DEFAULT_SETTINGS: VaultReviewSettings = {
-	files: [],
+	settings: {
+		showRandomFileRibbon: true,
+		showStatusBar: true,
+	},
 };
 
 export default class VaultReviewPlugin extends Plugin {
 	settings: VaultReviewSettings;
 	settingsTab: VaultReviewSettingTab | null = null;
+
 	statusBar: StatusBar;
+	randomFileRibbon: HTMLElement;
 
 	async onload() {
 		await this.loadSettings();
 
 		// Ribbon
-		this.addRibbonIcon("dice", "Open random not reviewed file", (event) => {
-			this.openRandomFile();
-		});
+		this.randomFileRibbon = this.addRibbonIcon(
+			"dice",
+			"Open random not reviewed file",
+			() => {
+				this.openRandomFile();
+			}
+		);
+		this.setRandomFileRibbonIsVisible(
+			this.settings.settings.showRandomFileRibbon
+		);
 
 		// Status bar
 		const statusBarItemEl = this.addStatusBarItem();
 		this.statusBar = new StatusBar(statusBarItemEl, this);
+		this.statusBar.setIsVisible(this.settings.settings.showStatusBar);
 
 		// Commands
 		this.addCommand({
@@ -100,7 +123,7 @@ export default class VaultReviewPlugin extends Plugin {
 			checkCallback: (checking) => {
 				if (checking) {
 					return (
-						this.settings.files.find(
+						this.settings.snapshot?.files.find(
 							(file) => file.path === this.app.workspace.getActiveFile()?.path
 						)?.status === "reviewed"
 					);
@@ -119,10 +142,11 @@ export default class VaultReviewPlugin extends Plugin {
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 
-		this.settings.snapshotCreatedAt =
-			typeof this.settings.snapshotCreatedAt === "string"
-				? new Date(this.settings.snapshotCreatedAt)
-				: this.settings.snapshotCreatedAt;
+		if (typeof this.settings.snapshot?.createdAt === "string") {
+			this.settings.snapshot.createdAt = new Date(
+				this.settings.snapshot.createdAt
+			);
+		}
 
 		console.log(this.settings);
 	}
@@ -131,8 +155,16 @@ export default class VaultReviewPlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
+	setRandomFileRibbonIsVisible(isVisible: boolean) {
+		this.randomFileRibbon.style.display = isVisible ? "flex" : "none";
+	}
+
 	getToReviewFiles() {
-		return this.settings.files.filter((file) => file.status === "to_review");
+		return (
+			this.settings.snapshot?.files.filter(
+				(file) => file.status === "to_review"
+			) ?? []
+		);
 	}
 
 	async openRandomFile() {
@@ -158,10 +190,12 @@ export default class VaultReviewPlugin extends Plugin {
 			leaf.openFile(targetFile);
 		} else {
 			new Notice("Cannot find a file with that name");
-			this.settings.files = this.settings.files.filter(
-				(fp) => fp.path !== file.path
-			);
-			await this.saveSettings();
+			if (this.settings.snapshot) {
+				this.settings.snapshot.files = this.settings.snapshot.files.filter(
+					(fp) => fp.path !== file.path
+				);
+				await this.saveSettings();
+			}
 		}
 	};
 
@@ -177,13 +211,13 @@ export default class VaultReviewPlugin extends Plugin {
 			return;
 		}
 
-		const snapshotFile = this.settings.files.find(
+		const snapshotFile = this.settings.snapshot?.files.find(
 			(f) => f.path === activeFile.path
 		);
 
 		if (!snapshotFile) {
 			new Notice("File was added to snapshot and marked as reviewed");
-			this.settings.files.push(toFile(activeFile, "reviewed"));
+			this.settings.snapshot?.files.push(toFile(activeFile, "reviewed"));
 		} else {
 			snapshotFile.status = "reviewed";
 		}
@@ -202,13 +236,13 @@ export default class VaultReviewPlugin extends Plugin {
 			return;
 		}
 
-		const snapshotFile = this.settings.files.find(
+		const snapshotFile = this.settings.snapshot?.files.find(
 			(f) => f.path === activeFile.path
 		);
 
 		if (!snapshotFile) {
 			new Notice("File was added to snapshot and marked as not reviewed");
-			this.settings.files.push(toFile(activeFile, "to_review"));
+			this.settings.snapshot?.files.push(toFile(activeFile, "to_review"));
 		} else {
 			snapshotFile.status = "to_review";
 		}
@@ -228,8 +262,7 @@ export default class VaultReviewPlugin extends Plugin {
 		);
 
 		const onDelete = async () => {
-			this.settings.snapshotCreatedAt = undefined;
-			this.settings.files = [];
+			this.settings.snapshot = undefined;
 			await this.saveSettings();
 			this.statusBar.update();
 			resolve("deleted");
@@ -289,7 +322,7 @@ class StatusBar {
 	};
 
 	update = (file?: TFile | null) => {
-		if (!this.plugin.settings.snapshotCreatedAt) {
+		if (!this.plugin.settings.snapshot) {
 			this.setIsVisible(false);
 			return;
 		}
@@ -302,7 +335,7 @@ class StatusBar {
 
 		this.setIsVisible(true);
 
-		const snapshotFile = this.plugin.settings.files.find(
+		const snapshotFile = this.plugin.settings.snapshot.files.find(
 			(f) => f.path === activeFile.path
 		);
 		if (!snapshotFile) {
@@ -341,15 +374,15 @@ class VaultReviewSettingTab extends PluginSettingTab {
 
 		this.plugin.settingsTab = this;
 
-		const snapshotDate = this.plugin.settings.snapshotCreatedAt;
+		const snapshotDate = this.plugin.settings.snapshot?.createdAt;
 
 		// Main action
 		const settingEl = new Setting(containerEl)
 			.setName("Snapshot")
 			.setDesc(
 				snapshotDate
-					? `Snapshot created on ${snapshotDate.toLocaleDateString()}`
-					: "Create a snapshot of the vault"
+					? `Snapshot created on ${snapshotDate.toLocaleDateString()}.`
+					: "Create a snapshot of the vault."
 			);
 		if (snapshotDate) {
 			settingEl.addButton((btn) => {
@@ -366,10 +399,12 @@ class VaultReviewSettingTab extends PluginSettingTab {
 						.getMarkdownFiles()
 						.filter(
 							(file) =>
-								!this.plugin.settings.files.some((f) => f.path === file.path)
+								!this.plugin.settings.snapshot?.files.some(
+									(f) => f.path === file.path
+								)
 						)
 						.map((file) => toFile(file, "to_review"));
-					this.plugin.settings.files.push(...vaultFiles);
+					this.plugin.settings.snapshot?.files.push(...vaultFiles);
 
 					await this.plugin.saveSettings();
 					this.plugin.statusBar.update();
@@ -386,8 +421,10 @@ class VaultReviewSettingTab extends PluginSettingTab {
 					const files = this.plugin.app.vault
 						.getMarkdownFiles()
 						.map((file) => toFile(file, "to_review"));
-					this.plugin.settings.snapshotCreatedAt = new Date();
-					this.plugin.settings.files = files;
+					this.plugin.settings.snapshot = {
+						files,
+						createdAt: new Date(),
+					};
 
 					await this.plugin.saveSettings();
 					this.plugin.statusBar.update();
@@ -400,11 +437,13 @@ class VaultReviewSettingTab extends PluginSettingTab {
 		if (snapshotDate) {
 			containerEl.createDiv("snapshot-info", (div) => {
 				const allFilesLength = this.plugin.app.vault.getMarkdownFiles().length;
-				const snapshotFilesLength = this.plugin.settings.files.length;
+				const snapshotFilesLength =
+					this.plugin.settings.snapshot?.files.length ?? 0;
 				const notInSnapshotLength = allFilesLength - snapshotFilesLength;
-				const reviewedFilesLength = this.plugin.settings.files.filter(
-					(file) => file.status === "reviewed"
-				).length;
+				const reviewedFilesLength =
+					this.plugin.settings.snapshot?.files.filter(
+						(file) => file.status === "reviewed"
+					).length ?? 0;
 				const toReviewFilesLength = snapshotFilesLength - reviewedFilesLength;
 
 				const percentSnapshotCompleted = Math.round(
@@ -426,6 +465,30 @@ class VaultReviewSettingTab extends PluginSettingTab {
 				div.createEl("p").setText(`Not in snapshot: ${notInSnapshotLength}`);
 			});
 		}
+
+		new Setting(containerEl)
+			.setName("Status bar")
+			.setDesc("Show file review status in the status bar.")
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.settings.showStatusBar);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.settings.showStatusBar = value;
+					this.plugin.statusBar.setIsVisible(value);
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName("Random file ribbon")
+			.setDesc("Show ribbon that opens random not reviewed file.")
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.settings.showStatusBar);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.settings.showRandomFileRibbon = value;
+					this.plugin.setRandomFileRibbonIsVisible(value);
+					await this.plugin.saveSettings();
+				});
+			});
 	}
 }
 
@@ -440,7 +503,7 @@ export class ConfirmSnapshotDeleteModal extends Modal {
 		this.setTitle("Delete snapshot?");
 
 		new Setting(this.contentEl)
-			.setName("This action cannot be undone!")
+			.setName("This action cannot be undone")
 			.setDesc(
 				"You will lose all progress and will need to create a new snapshot."
 			)
