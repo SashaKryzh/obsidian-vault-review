@@ -8,7 +8,9 @@ import {
 	PluginSettingTab,
 	Setting,
 	SuggestModal,
-	TFile
+	TAbstractFile,
+	TFile,
+	TFolder,
 } from "obsidian";
 
 const toFile = (file: File | TFile, status: FileStatus): File => {
@@ -131,6 +133,10 @@ export default class VaultReviewPlugin extends Plugin {
 
 		// Settings
 		this.addSettingTab(new VaultReviewSettingTab(this.app, this));
+
+		// Events
+		this.app.vault.on("rename", this.handleFileRename);
+		this.app.vault.on("delete", this.handleFileDelete);
 	}
 
 	onunload() {}
@@ -151,6 +157,35 @@ export default class VaultReviewPlugin extends Plugin {
 
 		return snapshotFile?.status ?? "new";
 	}
+
+	private readonly handleFileRename = async (
+		file: TAbstractFile,
+		oldPath: string
+	) => {
+		if (file instanceof TFolder) {
+			return;
+		}
+
+		const snapshotFile = this.settings.snapshot?.files.find(
+			(f) => f.path === oldPath
+		);
+
+		if (snapshotFile) {
+			snapshotFile.path = file.path;
+			await this.saveSettings();
+		}
+	};
+
+	private readonly handleFileDelete = async (file: TAbstractFile) => {
+		if (file instanceof TFolder || !this.settings.snapshot) {
+			return;
+		}
+
+		this.settings.snapshot.files = this.settings.snapshot.files.filter(
+			(f) => f.path !== file.path
+		);
+		await this.saveSettings();
+	};
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
