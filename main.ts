@@ -1,14 +1,14 @@
 import {
 	App,
-	Modal,
 	Menu,
+	Modal,
 	Notice,
 	PaneType,
 	Plugin,
 	PluginSettingTab,
-	setIcon,
 	Setting,
-	TFile,
+	SuggestModal,
+	TFile
 } from "obsidian";
 
 const toFile = (file: File | TFile, status: FileStatus): File => {
@@ -25,6 +25,8 @@ type Brand<K, T> = K & { __brand: T };
 
 type FileStatus = "to_review" | "reviewed";
 
+type AllFileStatus = FileStatus | "new";
+
 type File = Brand<
 	{
 		basename: string;
@@ -40,7 +42,6 @@ interface Snapshot {
 }
 
 interface Settings {
-	showRandomFileRibbon: boolean;
 	showStatusBar: boolean;
 }
 
@@ -51,7 +52,6 @@ interface VaultReviewSettings {
 
 const DEFAULT_SETTINGS: VaultReviewSettings = {
 	settings: {
-		showRandomFileRibbon: true,
 		showStatusBar: true,
 	},
 };
@@ -61,21 +61,17 @@ export default class VaultReviewPlugin extends Plugin {
 	settingsTab: VaultReviewSettingTab | null = null;
 
 	statusBar: StatusBar;
-	randomFileRibbon: HTMLElement;
+	fileStatusControllerRibbon: HTMLElement;
 
 	async onload() {
 		await this.loadSettings();
 
-		// Ribbon
-		this.randomFileRibbon = this.addRibbonIcon(
-			"dice",
-			"Open random not reviewed file",
+		this.fileStatusControllerRibbon = this.addRibbonIcon(
+			"scan-eye",
+			"Open vault review",
 			() => {
-				this.openRandomFile();
+				this.openFileStatusController();
 			}
-		);
-		this.setRandomFileRibbonIsVisible(
-			this.settings.settings.showRandomFileRibbon
 		);
 
 		// Status bar
@@ -139,6 +135,23 @@ export default class VaultReviewPlugin extends Plugin {
 
 	onunload() {}
 
+	getActiveFile() {
+		return this.app.workspace.getActiveFile();
+	}
+
+	getActiveFileStatus(): AllFileStatus | undefined {
+		const activeFile = this.getActiveFile();
+		if (!activeFile) {
+			return;
+		}
+
+		const snapshotFile = this.settings.snapshot?.files.find(
+			(f) => f.path === activeFile.path
+		);
+
+		return snapshotFile?.status ?? "new";
+	}
+
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 
@@ -155,10 +168,6 @@ export default class VaultReviewPlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
-	setRandomFileRibbonIsVisible(isVisible: boolean) {
-		this.randomFileRibbon.style.display = isVisible ? "flex" : "none";
-	}
-
 	getToReviewFiles() {
 		return (
 			this.settings.snapshot?.files.filter(
@@ -167,9 +176,24 @@ export default class VaultReviewPlugin extends Plugin {
 		);
 	}
 
+	async openFileStatusController() {
+		if (!this.settings.snapshot) {
+			new Notice("Vault review snapshot is not created");
+			return;
+		}
+
+		new FileStatusControllerModal(this.app, this).open();
+	}
+
 	async openRandomFile() {
+		if (!this.settings.snapshot) {
+			new Notice("Vault review snapshot is not created");
+			return;
+		}
+
 		const files = this.getToReviewFiles();
 		if (!files.length) {
+			new Notice("All files are reviewed");
 			return;
 		}
 
@@ -292,7 +316,7 @@ class StatusBar {
 		this.element = element;
 		this.plugin = plugin;
 
-		setIcon(element.createSpan("status-bar-item-icon"), "dice");
+		// setIcon(element.createSpan("status-bar-item-icon"), "scan-eye");
 		element.createSpan("status").setText("Not reviewed");
 		element.addClass("mod-clickable");
 
@@ -356,7 +380,11 @@ class StatusBar {
 	}
 
 	setIsVisible(isVisible: boolean) {
-		this.element.style.display = isVisible ? "inline-flex" : "none";
+		if (!this.plugin.settings.snapshot) {
+			this.element.style.display = "none";
+		} else {
+			this.element.style.display = isVisible ? "inline-flex" : "none";
+		}
 	}
 }
 
@@ -477,18 +505,6 @@ class VaultReviewSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
-
-		new Setting(containerEl)
-			.setName("Random file ribbon")
-			.setDesc("Show ribbon that opens random not reviewed file.")
-			.addToggle((toggle) => {
-				toggle.setValue(this.plugin.settings.settings.showStatusBar);
-				toggle.onChange(async (value) => {
-					this.plugin.settings.settings.showRandomFileRibbon = value;
-					this.plugin.setRandomFileRibbonIsVisible(value);
-					await this.plugin.saveSettings();
-				});
-			});
 	}
 }
 
@@ -522,5 +538,88 @@ export class ConfirmSnapshotDeleteModal extends Modal {
 					this.close();
 				});
 			});
+	}
+}
+
+const ACTIONS = {
+	open_random: {
+		name: "Open random not reviewed file",
+	},
+	review: {
+		name: "Review file",
+	},
+	review_and_next: {
+		name: "Review file and open next random file",
+	},
+	unreview: {
+		name: "Unreview file",
+	},
+} as const;
+
+type Action = keyof typeof ACTIONS;
+
+class FileStatusControllerModal extends SuggestModal<Action> {
+	plugin: VaultReviewPlugin;
+
+	constructor(app: App, plugin: VaultReviewPlugin) {
+		super(app);
+		this.plugin = plugin;
+
+		const fileStatus = this.plugin.getActiveFileStatus();
+		this.setPlaceholder(
+			!fileStatus
+				? ""
+				: fileStatus === "new"
+				? "This file is not in snapshot"
+				: fileStatus === "to_review"
+				? "This file is not reviewed"
+				: "This file is reviewed"
+		);
+	}
+
+	getSuggestions(query: string): Action[] {
+		const activeFile = this.plugin.getActiveFile();
+		let actions: Action[] = [];
+
+		if (!activeFile) {
+			actions = ["open_random"];
+		} else {
+			const isReviewed =
+				this.plugin.settings.snapshot?.files.find(
+					(f) => f.path === activeFile.path
+				)?.status === "reviewed";
+
+			if (isReviewed) {
+				actions = ["open_random", "unreview"];
+			} else {
+				actions = ["review_and_next", "review", "open_random"];
+			}
+		}
+
+		return actions.filter((a) =>
+			ACTIONS[a].name.toLowerCase().includes(query.toLowerCase())
+		);
+	}
+
+	renderSuggestion(action: Action, el: HTMLElement) {
+		el.createEl("div", { text: ACTIONS[action].name });
+	}
+
+	onChooseSuggestion(action: Action, evt: MouseEvent | KeyboardEvent) {
+		if (action === "open_random") {
+			this.plugin.openRandomFile();
+		}
+
+		if (action === "review") {
+			this.plugin.completeReview();
+		}
+
+		if (action === "review_and_next") {
+			this.plugin.completeReview({ openNext: true });
+		}
+
+		if (action === "unreview") {
+			this.plugin.unreviewFile();
+		}
 	}
 }
