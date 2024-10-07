@@ -142,7 +142,11 @@ export default class VaultReviewPlugin extends Plugin {
 	onunload() {}
 
 	getActiveFile() {
-		return this.app.workspace.getActiveFile();
+		const activeFile = this.app.workspace.getActiveFile();
+		if (activeFile?.extension !== "md") {
+			return null;
+		}
+		return activeFile;
 	}
 
 	getActiveFileStatus(): FileStatus | undefined {
@@ -268,7 +272,7 @@ export default class VaultReviewPlugin extends Plugin {
 		file?: File;
 		openNext?: boolean;
 	} = {}) => {
-		const activeFile = file ?? this.app.workspace.getActiveFile();
+		const activeFile = file ?? this.getActiveFile();
 		if (!activeFile) {
 			return;
 		}
@@ -293,7 +297,7 @@ export default class VaultReviewPlugin extends Plugin {
 	};
 
 	public readonly unreviewFile = async (file?: File) => {
-		const activeFile = file ?? this.app.workspace.getActiveFile();
+		const activeFile = file ?? this.getActiveFile();
 		if (!activeFile) {
 			return;
 		}
@@ -389,7 +393,7 @@ class StatusBar {
 			return;
 		}
 
-		const activeFile = file ?? this.plugin.app.workspace.getActiveFile();
+		const activeFile = file ?? this.plugin.getActiveFile();
 		if (!activeFile) {
 			this.setIsVisible(false);
 			return;
