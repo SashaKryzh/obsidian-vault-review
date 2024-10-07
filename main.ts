@@ -13,7 +13,7 @@ import {
 	TFolder,
 } from "obsidian";
 
-const toFile = (file: File | TFile, status: FileStatus): File => {
+const toFile = (file: File | TFile, status: SnapshotFileStatus): File => {
 	return {
 		basename: file.basename,
 		path: file.path,
@@ -25,15 +25,15 @@ type DeleteSnapshotResult = "deleted" | "cancelled";
 
 type Brand<K, T> = K & { __brand: T };
 
-type FileStatus = "to_review" | "reviewed";
+type FileStatus = "new" | "to_review" | "reviewed" | "deleted";
 
-type AllFileStatus = FileStatus | "new";
+type SnapshotFileStatus = Exclude<FileStatus, "new">;
 
 type File = Brand<
 	{
 		basename: string;
 		path: string;
-		status: FileStatus;
+		status: SnapshotFileStatus;
 	},
 	"File"
 >;
@@ -145,7 +145,7 @@ export default class VaultReviewPlugin extends Plugin {
 		return this.app.workspace.getActiveFile();
 	}
 
-	getActiveFileStatus(): AllFileStatus | undefined {
+	getActiveFileStatus(): FileStatus | undefined {
 		const activeFile = this.getActiveFile();
 		if (!activeFile) {
 			return;
@@ -181,10 +181,13 @@ export default class VaultReviewPlugin extends Plugin {
 			return;
 		}
 
-		this.settings.snapshot.files = this.settings.snapshot.files.filter(
-			(f) => f.path !== file.path
+		const snapshotFile = this.settings.snapshot.files.find(
+			(f) => f.path === file.path
 		);
-		await this.saveSettings();
+		if (snapshotFile) {
+			snapshotFile.status = "deleted";
+			await this.saveSettings();
+		}
 	};
 
 	async loadSettings() {
@@ -502,15 +505,25 @@ class VaultReviewSettingTab extends PluginSettingTab {
 				const allFilesLength = this.plugin.app.vault.getMarkdownFiles().length;
 				const snapshotFilesLength =
 					this.plugin.settings.snapshot?.files.length ?? 0;
-				const notInSnapshotLength = allFilesLength - snapshotFilesLength;
+				const deletedFilesLength =
+					this.plugin.settings.snapshot?.files.filter(
+						(file) => file.status === "deleted"
+					).length ?? 0;
+				const notInSnapshotLength =
+					allFilesLength - snapshotFilesLength + deletedFilesLength;
 				const reviewedFilesLength =
 					this.plugin.settings.snapshot?.files.filter(
 						(file) => file.status === "reviewed"
 					).length ?? 0;
-				const toReviewFilesLength = snapshotFilesLength - reviewedFilesLength;
+				const toReviewFilesLength =
+					snapshotFilesLength - reviewedFilesLength - deletedFilesLength;
 
 				const percentSnapshotCompleted = Math.round(
-					(reviewedFilesLength / snapshotFilesLength) * 100
+					(reviewedFilesLength / (snapshotFilesLength - deletedFilesLength)) *
+						100
+				);
+				const percentSnapshotDeleted = Math.round(
+					(deletedFilesLength / snapshotFilesLength) * 100
 				);
 
 				div.createEl("p").setText(`Markdown files in vault: ${allFilesLength}`);
@@ -524,6 +537,11 @@ class VaultReviewSettingTab extends PluginSettingTab {
 					.createSpan()
 					.setText(
 						`Reviewed: ${reviewedFilesLength} (${percentSnapshotCompleted}%)`
+					);
+				inSnapshotEl
+					.createSpan()
+					.setText(
+						`Deleted: ${deletedFilesLength} (${percentSnapshotDeleted}%)`
 					);
 				div.createEl("p").setText(`Not in snapshot: ${notInSnapshotLength}`);
 			});
