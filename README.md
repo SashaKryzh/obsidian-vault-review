@@ -9,3 +9,7 @@ Features:
 - To create a snapshot, open plugin settings.
 - To update file review status use commands, ribbon or status bar (desktop).
 - In settings you will find statistics about your review progress.
+
+Planned:
+
+- Support not only .md files.
