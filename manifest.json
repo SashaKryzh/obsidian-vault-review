@@ -1,10 +1,10 @@
 {
 	"id": "vault-review",
 	"name": "Vault Review",
-	"version": "1.0.0",
-	"minAppVersion": "0.15.0",
-	"description": "Randomly review your vault with tracked progress.",
+	"minAppVersion": "1.6.7",
+	"description": "Randomly review your vault and track progress.",
 	"author": "Alexander",
 	"authorUrl": "https://x.com/sashakryzh",
-	"isDesktopOnly": false
+	"isDesktopOnly": false,
+	"version": "1.0.0"
 }
