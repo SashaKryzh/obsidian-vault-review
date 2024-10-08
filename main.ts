@@ -116,8 +116,11 @@ export default class VaultReviewPlugin extends Plugin {
 		this.addSettingTab(new VaultReviewSettingTab(this.app, this));
 
 		// Events
-		this.app.vault.on("rename", this.handleFileRename);
-		this.app.vault.on("delete", this.handleFileDelete);
+		this.registerEvent(this.app.vault.on("rename", this.handleFileRename));
+		this.registerEvent(this.app.vault.on("delete", this.handleFileDelete));
+		this.registerEvent(
+			this.app.workspace.on("file-open", this.statusBar.update)
+		);
 	};
 
 	onunload = () => {};
@@ -329,9 +332,7 @@ class StatusBar {
 
 		element.createSpan("status").setText("Not reviewed");
 		element.addClass("mod-clickable");
-
-		this.element.addEventListener("click", this.onClick);
-		this.plugin.app.workspace.on("file-open", this.update);
+		element.addEventListener("click", this.onClick);
 
 		this.update();
 	}
