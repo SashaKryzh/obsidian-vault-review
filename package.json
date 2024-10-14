@@ -1,6 +1,6 @@
 {
 	"name": "vault-review",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"description": "Randomly review your vault and track progress.",
 	"main": "main.js",
 	"scripts": {
