@@ -59,7 +59,7 @@ export default class VaultReviewPlugin extends Plugin {
 
 	statusBar: StatusBar;
 
-	async onload() {
+	onload = async () => {
 		await this.loadSettings();
 
 		// Ribbon
@@ -121,12 +121,11 @@ export default class VaultReviewPlugin extends Plugin {
 		this.registerEvent(
 			this.app.workspace.on("file-open", this.statusBar.update)
 		);
-	}
+	};
 
-	onunload() {}
+	onunload = () => {};
 
-	async loadSettings() {
-		console.log("loadSettings");
+	loadSettings = async () => {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 
 		if (typeof this.settings.snapshot?.createdAt === "string") {
@@ -134,34 +133,33 @@ export default class VaultReviewPlugin extends Plugin {
 				this.settings.snapshot.createdAt
 			);
 		}
-	}
+	};
 
-	async saveSettings() {
-		console.log("Save settings");
+	saveSettings = async () => {
 		await this.saveData(this.settings);
-	}
+	};
 
-	async onExternalSettingsChange() {
-		console.log("onExternalSettingsChange");
-		this.loadSettings();
-	}
+	onExternalSettingsChange = async () => {
+		await this.loadSettings();
+		this.statusBar.update();
+	};
 
-	getActiveFile(): TFile | null {
+	getActiveFile = (): TFile | null => {
 		const activeFile = this.app.workspace.getActiveFile();
 		if (activeFile?.extension !== "md") {
 			return null;
 		}
 		return activeFile;
-	}
+	};
 
-	getSnapshotFile(path?: string) {
+	getSnapshotFile = (path?: string) => {
 		path = path ?? this.getActiveFile()?.path;
 		if (!path) {
 			return;
 		}
 
 		return this.settings.snapshot?.files.find((f) => f.path === path);
-	}
+	};
 
 	getActiveFileStatus = (): FileStatus | undefined => {
 		const activeFile = this.getActiveFile();
@@ -366,7 +364,7 @@ class StatusBar {
 		} else if (activeFileStatus === "reviewed") {
 			this.setText("Reviewed");
 		} else {
-			this.setText("");
+			this.setText("Unknown status");
 		}
 	};
 
