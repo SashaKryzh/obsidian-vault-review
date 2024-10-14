@@ -126,6 +126,7 @@ export default class VaultReviewPlugin extends Plugin {
 	onunload = () => {};
 
 	loadSettings = async () => {
+		console.log("loadSettings");
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 
 		if (typeof this.settings.snapshot?.createdAt === "string") {
@@ -136,7 +137,13 @@ export default class VaultReviewPlugin extends Plugin {
 	};
 
 	saveSettings = async () => {
+		console.log("Save settings");
 		await this.saveData(this.settings);
+	};
+
+	onExternalSettingsChange = () => {
+		console.log("External settings change detected");
+		this.loadSettings();
 	};
 
 	getActiveFile = (): TFile | null => {
