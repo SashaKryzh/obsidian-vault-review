@@ -391,9 +391,9 @@ class StatusBar {
 
 	private setIsVisible = (isVisible: boolean) => {
 		if (!this.plugin.settings.snapshot) {
-			this.element.style.display = "none";
+			this.element.toggleClass("hidden", false);
 		} else {
-			this.element.style.display = isVisible ? "inline-flex" : "none";
+			this.element.toggleClass("hidden", !isVisible);
 		}
 	};
 }

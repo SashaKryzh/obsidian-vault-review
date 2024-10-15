@@ -8,3 +8,7 @@
 	flex-direction: column;
 	gap: var(--size-2-2);
 }
+
+.hidden {
+	display: none;
+}
